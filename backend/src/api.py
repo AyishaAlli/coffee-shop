@@ -17,7 +17,7 @@ CORS(app)
 !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
 !! Running this function will add one
 '''
-# db_drop_and_create_all()
+db_drop_and_create_all()
 
 # ROUTES
 '''
@@ -28,6 +28,18 @@ CORS(app)
     returns status code 200 and json {"success": True, "drinks": drinks} where drinks is the list of drinks
         or appropriate status code indicating reason for failure
 '''
+@app.route("/drinks", methods=["GET"])
+def get_drinks():
+
+    drinks = Drink.query.all()
+
+    if len(drinks) == 0:
+        abort(404)
+
+    formatted_drinks = [drink.short() for drink in drinks]
+
+    return jsonify({"success": True, "drinks": formatted_drinks}), 200
+
 
 
 '''
@@ -38,6 +50,18 @@ CORS(app)
     returns status code 200 and json {"success": True, "drinks": drinks} where drinks is the list of drinks
         or appropriate status code indicating reason for failure
 '''
+@app.route("/drinks-detail", methods=["GET"])
+@requires_auth("get:drinks-detail")
+def get_drinks_detail(payload):
+
+    drinks = Drink.query.all()
+
+    if len(drinks) == 0:
+        abort(404)
+ 
+    formatted_drinks = [drink.long() for drink in drinks]
+
+    return jsonify({"success": True, "drinks": formatted_drinks}), 200
 
 
 '''
@@ -49,6 +73,20 @@ CORS(app)
     returns status code 200 and json {"success": True, "drinks": drink} where drink an array containing only the newly created drink
         or appropriate status code indicating reason for failure
 '''
+@app.route("/drinks", methods=["POST"])
+@requires_auth("post:drinks")
+def create_drink(payload):
+
+    body = request.get_json()
+    title = body.get("title", None)
+    recipe = body.get("recipe", None)
+
+    if title is None or recipe is None:
+        abort(422)
+
+    drink = Drink(title=title, recipe=json.dumps(recipe))
+    drink.insert()
+    return jsonify({"success": True, "drinks": [drink.long()]}), 200
 
 
 '''
@@ -62,6 +100,25 @@ CORS(app)
     returns status code 200 and json {"success": True, "drinks": drink} where drink an array containing only the updated drink
         or appropriate status code indicating reason for failure
 '''
+@app.route("/drinks/<int:id>", methods=["PATCH"])
+@requires_auth("patch:drinks")
+def update_drink(payload, id):
+
+    drink = Drink.query.filter(Drink.id == id).one_or_none()
+
+    if drink is None:
+        abort(404)
+
+    body = request.get_json()
+    title = body.get("title", None)
+    recipe = body.get("recipe", None)
+
+    if title is None or recipe is None:
+        abort(422)
+    drink.title = title
+    drink.recipe = json.dumps(recipe)
+    drink.update()
+    return jsonify({"success": True, "drinks": [drink.long()]}), 200
 
 
 '''
@@ -74,6 +131,14 @@ CORS(app)
     returns status code 200 and json {"success": True, "delete": id} where id is the id of the deleted record
         or appropriate status code indicating reason for failure
 '''
+@app.route("/drinks/<int:id>", methods=["DELETE"])
+@requires_auth("delete:drinks")
+def delete_drink(payload, id):
+    drink = Drink.query.filter(Drink.id == id).one_or_none()
+    if drink is None:
+        abort(404)
+    drink.delete()
+    return jsonify({"success": True, "delete": id}), 200
 
 
 # Error Handling
@@ -91,6 +156,8 @@ def unprocessable(error):
     }), 422
 
 
+    
+
 '''
 @TODO implement error handlers using the @app.errorhandler(error) decorator
     each error handler should return (with approprate messages):
@@ -106,12 +173,27 @@ def unprocessable(error):
 @TODO implement error handler for 404
     error handler should conform to general task above
 '''
-
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        "success": False, 
+        "error": 404, 
+        "message": 
+        "resource not found"
+        }), 404
 
 '''
 @TODO implement error handler for AuthError
     error handler should conform to general task above
 '''
+@app.errorhandler(AuthError)
+def auth_error(error):
+    return jsonify({
+        "success": False, 
+        "error": 401, 
+        "message": 
+        "unauthorized"
+        }), 401
 
 if __name__ == "__main__":
     app.debug = True
